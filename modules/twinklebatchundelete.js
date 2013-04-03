@@ -3,25 +3,27 @@
  *** twinklebatchundelete.js: Batch undelete module
  ****************************************
  * Mode of invocation:     Tab ("Und-batch")
- * Active on:              Existing user pages
+ * Active on:              Existing user pages and project pages
  * Config directives in:   TwinkleConfig
  */
 
 
 Twinkle.batchundelete = function twinklebatchundelete() {
-	if( mw.config.get("wgNamespaceNumber") !== mw.config.get("wgNamespaceIds").user || 
-		!mw.config.get("wgArticleId") ) {
+	if( !mw.config.get("wgArticleId") ) {
 		return;
 	}
-	if( Morebits.userIsInGroup( 'sysop' ) ) {
+	if( Morebits.userIsInGroup( 'sysop' ) && (mw.config.get("wgNamespaceNumber") === 2 ||
+		mw.config.get("wgNamespaceNumber") === 4) ) {
 		twAddPortletLink( Twinkle.batchundelete.callback, "Und-batch", "tw-batch-undel", "Undelete 'em all" );
 	}
 };
 
 Twinkle.batchundelete.callback = function twinklebatchundeleteCallback() {
 	var Window = new Morebits.simpleWindow( 800, 400 );
+	Window.setTitle("Batch undelete");
 	Window.setScriptName("Twinkle");
-	Window.setTitle("Batch undelete")
+	Window.addFooterLink("Twinkle help", "WP:TW/DOC#batchundelete");
+
 	var form = new Morebits.quickForm( Twinkle.batchundelete.callback.evaluate );
 	form.append( {
 			type: 'textarea',
@@ -29,43 +31,47 @@ Twinkle.batchundelete.callback = function twinklebatchundeleteCallback() {
 			label: 'Reason: '
 		} );
 
+	var statusdiv = document.createElement( 'div' );
+	statusdiv.style.padding = '15px';  // just so it doesn't look broken
+	Window.setContent(statusdiv);
+	Morebits.status.init(statusdiv);
+	Window.display();
+
 	var query = {
 		'action': 'query',
 		'generator': 'links',
 		'titles': mw.config.get("wgPageName"),
 		'gpllimit' : Twinkle.getPref('batchMax') // the max for sysops
 	};
-	var wikipedia_api = new Morebits.wiki.api( 'Grabbing pages', query, function( self ) {
-			var xmlDoc = self.responseXML;
-			var snapshot = xmlDoc.evaluate('//page[@missing]', xmlDoc, null, XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE, null );
+	var statelem = new Morebits.status("Grabbing list of pages");
+	var wikipedia_api = new Morebits.wiki.api( 'loading...', query, function( apiobj ) {
+			var xml = apiobj.responseXML;
+			var $pages = $(xml).find('page');
 			var list = [];
-			for ( var i = 0; i < snapshot.snapshotLength; ++i ) {
-				var object = snapshot.snapshotItem(i);
-				var page = xmlDoc.evaluate( '@title', object, null, XPathResult.STRING_TYPE, null ).stringValue;
-				list.push( {label:page, value:page, checked: true });
-			}
-			self.params.form.append( {
+			$pages.each(function(index, page) {
+				var $page = $(page);
+				if ($page.attr('missing') !== "") {
+					return true; // skip it
+				}
+				var title = $page.attr('title');
+				list.push( { label: title, value: title, checked: true });
+			});
+			form.append({ type: 'header', label: 'Pages to protect' });
+			form.append( {
 					type: 'checkbox',
 					name: 'pages',
 					list: list
-				}
-			);
-			self.params.form.append( { type:'submit' } );
+				} );
+			form.append( { type:'submit' } );
 
-			var result = self.params.form.render();
-			self.params.Window.setContent( result );
+			var result = form.render();
+			Window.setContent( result );
 
+		}, statelem );
 
-		}  );
-	wikipedia_api.params = { form:form, Window:Window };
 	wikipedia_api.post();
-	var root = document.createElement( 'div' );
-	Morebits.status.init( root );
-	Window.setContent( root );
-	Window.display();
 };
-Twinkle.batchundelete.currentUndeleteCounter = 0;
-Twinkle.batchundelete.currentundeletor = 0;
+
 Twinkle.batchundelete.callback.evaluate = function( event ) {
 	Morebits.wiki.actionCompleted.notice = 'Status';
 	Morebits.wiki.actionCompleted.postfix = 'batch undeletion is now completed';
@@ -78,48 +84,28 @@ Twinkle.batchundelete.callback.evaluate = function( event ) {
 	}
 	Morebits.simpleWindow.setButtonsEnabled(false);
 	Morebits.status.init( event.target );
+	Morebits.status.warn("Notice", "Batch undeletion can be extremely slow, especially for files. Please be patient. You may need to run this tool for a second or third time if errors occur.");
 
 	if( !pages ) {
-		Morebits.status.error( 'Error', 'nothing to undelete, aborting' );
+		Morebits.status.error( 'Error', 'Nothing to undelete, aborting' );
 		return;
 	}
 
-	var work = Morebits.array.chunk( pages, Twinkle.getPref('batchUndeleteChunks') );
-	Morebits.wiki.addCheckpoint();
-	Twinkle.batchundelete.currentundeletor = window.setInterval( Twinkle.batchundelete.callbacks.main, 1000, work, reason );
-};
-
-Twinkle.batchundelete.callbacks = {
-	main: function( work, reason ) {
-		if( work.length === 0 && Twinkle.batchundelete.currentUndeleteCounter <= 0 ) {
-			Morebits.status.info( 'work done' );
-			window.clearInterval( Twinkle.batchundelete.currentundeletor );
-			Morebits.wiki.removeCheckpoint();
-			return;
-		} else if( work.length !== 0 && Twinkle.batchundelete.currentUndeleteCounter <= Twinkle.getPref('batchUndeleteMinCutOff') ) {
-			var pages = work.shift();
-			Twinkle.batchundelete.currentUndeleteCounter += pages.length;
-			for( var i = 0; i < pages.length; ++i ) {
-				var title = pages[i];
-				var query = { 
-					'token': mw.user.tokens.get().editToken,
-					'title': title,
-					'action': 'undelete',
-					'reason': reason + Twinkle.getPref('deletionSummaryAd')
-				};
-				var wikipedia_api = new Morebits.wiki.api( "Undeleting " + title, query, function( self ) { 
-						--Twinkle.batchundelete.currentUndeleteCounter;
-						var link = document.createElement( 'a' );
-						link.setAttribute( 'href', mw.util.wikiGetlink(self.itsTitle) );
-						link.setAttribute( 'title', self.itsTitle );
-						link.appendChild( document.createTextNode(self.itsTitle) );
-						self.statelem.info( ['completed (',link,')'] );
-
-					});
-				wikipedia_api.itsTitle = title;
-				wikipedia_api.post();
-
-			}
-		}
-	}
+	var batchOperation = new Morebits.batchOperation("Undeleting pages");
+	batchOperation.setOption("chunkSize", 10);  // API undeletion is very slow
+	batchOperation.setOption("preserveIndividualStatusLines", true);  // user might want to check each page
+	batchOperation.setPageList(pages);
+	batchOperation.run(function(pageName) {
+		var query = { 
+			'token': mw.user.tokens.get().editToken,
+			'title': pageName,
+			'action': 'undelete',
+			'reason': reason + Twinkle.getPref('deletionSummaryAd')
+		};
+		var wikipedia_api = new Morebits.wiki.api( "Undeleting page " + pageName, query, 
+			batchOperation.workerSuccess, null, batchOperation.workerFailure );
+		wikipedia_api.statelem.status("undeleting...");
+		wikipedia_api.pageName = pageName;
+		wikipedia_api.post();
+	});
 };
