@@ -1455,8 +1455,6 @@ Morebits.wiki.api.prototype = {
  * load(onSuccess, onFailure): Loads the text for the page
  *    onSuccess - callback function which is called when the load has succeeded
  *    onFailure - callback function which is called when the load fails (optional)
- *                XXX onFailure for load() is not yet implemented – do we need it? -- UncleDouggie
- *                    probably not -- TTO
  *
  * save(onSuccess, onFailure): Saves the text for the page. Must be preceded by calling load().
  *    onSuccess - callback function which is called when the save has succeeded (optional)
@@ -3132,6 +3130,175 @@ Morebits.htmlNode = function ( type, content, color ) {
 	node.appendChild( document.createTextNode( content ) );
 	return node;
 }
+
+
+
+/**
+ * **************** Morebits.batchOperation ****************
+ * Iterates over a group of pages and executes a worker function for each.
+ *
+ * Constructor: Morebits.batchOperation(currentAction)
+ *
+ * setPageList(wikitext): Sets the list of pages to work on.
+ *    It should be an array of page names (strings).
+ *
+ * setOption(optionName, optionValue): Sets a known option:
+ *    - chunkSize (integer): the size of chunks to break the array into (default 50)
+ *    - preserveIndividualStatusLines (boolean): keep each page's status element visible 
+ *                                               when worker is complete?  See note below
+ *
+ * setOnComplete(onComplete): Sets the callback to be invoked on successful completion
+ *    of the batch.  Sadly, there is no guarantee that it will always fire.
+ *
+ * run(worker): Runs the given callback for each page in the list.
+ *    The callback should call workerSuccess when succeeding, or workerFailure
+ *    when failing.  If using Morebits.wiki.api or Morebits.wiki.page, this is easily
+ *    done by passing these two functions as parameters to the methods on those
+ *    objects, for instance, page.save(batchOp.workerSuccess, batchOp.workerFailure).
+ *    Make sure the methods are called directly if special success/failure cases arise.
+ *
+ * If using preserveIndividualStatusLines, you should try to ensure that the
+ * workerSuccess callback has access to the page title.  This is no problem for
+ * Morebits.wiki.page objects.  But when using the API, please set the
+ * |pageName| property on the Morebits.wiki.api object.
+ *
+ * There are sample batchOperation implementations using Morebits.wiki.page in
+ * twinklebatchdelete.js, and using Morebits.wiki.api in twinklebatchundelete.js.
+ */
+
+Morebits.batchOperation = function(currentAction) {
+	var ctx = {
+		 // backing fields for public properties
+		pageList: null,
+		options: {
+			chunkSize: 50,
+			preserveIndividualStatusLines: false
+		},
+		 // internal counters, etc.
+		statusElement: new Morebits.status(currentAction || "Performing batch operation"),
+		worker: null,
+		countStarted: 0,
+		countFinished: 0,
+		currentChunkIndex: 0,
+		pageChunks: [],
+		running: false
+	};
+
+	// shouldn't be needed by external users, but provided anyway for maximum flexibility
+	this.getStatusElement = function() {
+		return ctx.statusElement;
+	};
+
+	this.setPageList = function(pageList) {
+		ctx.pageList = pageList;
+	};
+
+	this.setOption = function(optionName, optionValue) {
+		ctx.options[optionName] = optionValue;
+	};
+
+	this.run = function(worker) {
+		if (ctx.running) {
+			ctx.statusElement.error("Batch operation is already running");
+			return;
+		}
+		ctx.running = true;
+
+		ctx.worker = worker;
+		ctx.countStarted = 0;
+		ctx.countFinished = 0;
+		ctx.currentChunkIndex = 0;
+		ctx.pageChunks = [];
+
+		var total = ctx.pageList.length;
+		if (!total) {
+			ctx.statusElement.info("nothing to do");
+			ctx.running = false;
+			return;
+		}
+
+		// chunk page list into more manageable units
+		ctx.pageChunks = Morebits.array.chunk(ctx.pageList, ctx.options.chunkSize);
+
+		// start the process
+		Morebits.wiki.addCheckpoint();
+		ctx.statusElement.status("0%");
+		fnStartNewChunk();
+	};
+	
+	this.workerSuccess = function(apiobj) {
+		// update or remove status line
+		var statelem = apiobj.getStatusElement();
+		if (ctx.options.preserveIndividualStatusLines) {
+			if (apiobj.getPageName || apiobj.pageName) {
+				// we know the page title - display a relevant message
+				var pageName = apiobj.getPageName ? apiobj.getPageName() : apiobj.pageName;
+				var link = document.createElement('a');
+				link.setAttribute('href', mw.util.wikiGetlink(pageName));
+				link.appendChild(document.createTextNode(pageName));
+				statelem.info(['completed (', link, ')']);
+			} else {
+				// we don't know the page title - just display a generic message
+				statelem.info('done');
+			}
+		} else {
+			// remove the status line from display
+			statelem.unlink();
+		}
+
+		fnDoneOne(apiobj);
+	};
+
+	this.workerFailure = function(apiobj) {
+		fnDoneOne(apiobj);
+	};
+
+	// private functions
+
+	var thisProxy = this;
+
+	var fnStartNewChunk = function() {
+		var chunk = ctx.pageChunks[ctx.currentChunkIndex];
+		if (!chunk) { 
+			return;  // done! yay
+		}
+
+		// start workers for the current chunk
+		ctx.countStarted += chunk.length;
+		$.each(chunk, function(index, page) {
+			ctx.worker(page, thisProxy);
+		});
+	};
+
+	var fnDoneOne = function() {
+		ctx.countFinished++;
+		
+		// update overall status line
+		var total = ctx.pageList.length;
+		if (ctx.countFinished === total) {
+			ctx.statusElement.info("100% (completed)");
+			Morebits.wiki.removeCheckpoint();
+			ctx.running = false;
+			return;
+		}
+
+		if (ctx.countFinished > total) {  // just for giggles (well, serious debugging, actually)
+			ctx.statusElement.warn("100% (overshot by " + (ctx.countFinished - total) + ")");
+			Morebits.wiki.removeCheckpoint();
+			ctx.running = false;
+			return;
+		}
+
+		ctx.statusElement.status(parseInt(100 * ctx.countFinished / total, 10) + "%");
+
+		if (ctx.countFinished >= (ctx.countStarted - (ctx.options.chunkSize / 10)) && 
+			Math.floor(ctx.countFinished / ctx.options.chunkSize) >= ctx.currentChunkIndex) {
+			// start a new chunk
+			ctx.currentChunkIndex++;
+			fnStartNewChunk();
+		}
+	};
+};
 
 
 
