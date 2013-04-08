@@ -56,7 +56,11 @@ Twinkle.batchundelete.callback = function twinklebatchundeleteCallback() {
 				var title = $page.attr('title');
 				list.push( { label: title, value: title, checked: true });
 			});
-			form.append({ type: 'header', label: 'Pages to protect' });
+			form.append( {
+					type: 'header',
+					label: 'Pages to undelete',
+					tooltip: 'To select or unselect many checkboxes at once, click the top checkbox (not the text beside it), then hold down Shift and click the bottom checkbox.'
+				} );
 			form.append( {
 					type: 'checkbox',
 					name: 'pages',
@@ -66,7 +70,7 @@ Twinkle.batchundelete.callback = function twinklebatchundeleteCallback() {
 
 			var result = form.render();
 			Window.setContent( result );
-
+			$(result).find(":checkbox").checkboxShiftClick();
 		}, statelem );
 
 	wikipedia_api.post();
