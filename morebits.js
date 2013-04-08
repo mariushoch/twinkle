@@ -3174,6 +3174,7 @@ Morebits.batchOperation = function(currentAction) {
 			chunkSize: 50,
 			preserveIndividualStatusLines: false
 		},
+		onComplete: null,
 		 // internal counters, etc.
 		statusElement: new Morebits.status(currentAction || "Performing batch operation"),
 		worker: null,
@@ -3195,6 +3196,10 @@ Morebits.batchOperation = function(currentAction) {
 
 	this.setOption = function(optionName, optionValue) {
 		ctx.options[optionName] = optionValue;
+	};
+
+	this.setOnComplete = function(onComplete) {
+		ctx.onComplete = onComplete;
 	};
 
 	this.run = function(worker) {
@@ -3277,6 +3282,9 @@ Morebits.batchOperation = function(currentAction) {
 		var total = ctx.pageList.length;
 		if (ctx.countFinished === total) {
 			ctx.statusElement.info("100% (completed)");
+			if (ctx.onComplete) {
+				ctx.onComplete(thisProxy);
+			}
 			Morebits.wiki.removeCheckpoint();
 			ctx.running = false;
 			return;
@@ -3284,6 +3292,9 @@ Morebits.batchOperation = function(currentAction) {
 
 		if (ctx.countFinished > total) {  // just for giggles (well, serious debugging, actually)
 			ctx.statusElement.warn("100% (overshot by " + (ctx.countFinished - total) + ")");
+			if (ctx.onComplete) {
+				ctx.onComplete(thisProxy);
+			}
 			Morebits.wiki.removeCheckpoint();
 			ctx.running = false;
 			return;
