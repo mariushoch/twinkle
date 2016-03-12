@@ -1,3 +1,9 @@
+//<nowiki>
+
+
+(function($){
+
+
 /*
  ****************************************
  *** friendlyshared.js: Shared IP tagging module
@@ -10,19 +16,24 @@
 Twinkle.shared = function friendlyshared() {
 	if( mw.config.get('wgNamespaceNumber') === 3 && Morebits.isIPAddress(mw.config.get('wgTitle')) ) {
 		var username = mw.config.get('wgTitle').split( '/' )[0].replace( /\"/, "\\\""); // only first part before any slashes
-		twAddPortletLink( function(){ Twinkle.shared.callback(username); }, "Shared IP", "friendly-shared", "Shared IP tagging" );
+		Twinkle.addPortletLink( function(){ Twinkle.shared.callback(username); }, "Shared IP", "friendly-shared", "Shared IP tagging" );
 	}
 };
 
-Twinkle.shared.callback = function friendlysharedCallback( uid ) {
-	var Window = new Morebits.simpleWindow( 600, 400 );
+Twinkle.shared.callback = function friendlysharedCallback() {
+	var Window = new Morebits.simpleWindow( 600, 420 );
 	Window.setTitle( "Shared IP address tagging" );
 	Window.setScriptName( "Twinkle" );
 	Window.addFooterLink( "Twinkle help", "WP:TW/DOC#shared" );
 
 	var form = new Morebits.quickForm( Twinkle.shared.callback.evaluate );
 
-	var div = form.append( { type: 'div', id: 'sharedip-templatelist' } );
+	var div = form.append( {
+			type: 'div',
+			id: 'sharedip-templatelist',
+			className: 'morebits-scrollbox'
+		}
+	);
 	div.append( { type: 'header', label: 'Shared IP address templates' } );
 	div.append( { type: 'radio', name: 'shared', list: Twinkle.shared.standardList,
 		event: function( e ) {
@@ -56,14 +67,12 @@ Twinkle.shared.callback = function friendlysharedCallback( uid ) {
 			tooltip: 'You can optionally enter some contact details for the organization.  Use this parameter only if the organization has specifically requested that it be added.  You can use wikimarkup if necessary.'
 		}
 	);
-	
+
 	form.append( { type:'submit' } );
 
 	var result = form.render();
 	Window.setContent( result );
 	Window.display();
-
-	$(result).find('div#sharedip-templatelist').addClass('quickform-scrollbox');
 };
 
 Twinkle.shared.standardList = [
@@ -72,7 +81,7 @@ Twinkle.shared.standardList = [
 		value: 'Shared IP',
 		tooltip: 'IP user talk page template that shows helpful information to IP users and those wishing to warn, block or ban them'
 	},
-	{ 
+	{
 		label: '{{Shared IP edu}}: shared IP address template modified for educational institutions',
 		value: 'Shared IP edu'
 	},
@@ -96,11 +105,11 @@ Twinkle.shared.standardList = [
 		label: '{{Static IP}}: shared IP address template modified for static IP addresses',
 		value: 'Static IP'
 	},
-	{ 
+	{
 		label: '{{ISP}}: shared IP address template modified for ISP organizations (specifically proxies)',
 		value: 'ISP'
 	},
-	{ 
+	{
 		label: '{{Mobile IP}}: shared IP address template modified for mobile phone companies and their customers',
 		value: 'Mobile IP'
 	},
@@ -160,14 +169,14 @@ Twinkle.shared.callback.evaluate = function friendlysharedCallbackEvaluate(e) {
 		alert( 'You must select a shared IP address template to use!' );
 		return;
 	}
-	
+
 	var value = shared[0];
-	
+
 	if( e.target.organization.value === '') {
 		alert( 'You must input an organization for the {{' + value + '}} template!' );
 		return;
 	}
-	
+
 	var params = {
 		value: value,
 		organization: e.target.organization.value,
@@ -186,3 +195,7 @@ Twinkle.shared.callback.evaluate = function friendlysharedCallbackEvaluate(e) {
 	wikipedia_page.setCallbackParameters(params);
 	wikipedia_page.load(Twinkle.shared.callbacks.main);
 };
+})(jQuery);
+
+
+//</nowiki>

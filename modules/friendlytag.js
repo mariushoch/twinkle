@@ -1,3 +1,9 @@
+//<nowiki>
+
+
+(function($){
+
+
 /*
  ****************************************
  *** friendlytag.js: Tag module
@@ -14,31 +20,64 @@ Twinkle.tag = function friendlytag() {
 	// redirect tagging
 	if( Morebits.wiki.isPageRedirect() ) {
 		Twinkle.tag.mode = 'redirect';
-		twAddPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Tag redirect" );
+		Twinkle.addPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Tag redirect" );
 	}
 	// file tagging
 	else if( mw.config.get('wgNamespaceNumber') === 6 && !document.getElementById("mw-sharedupload") && document.getElementById("mw-imagepage-section-filehistory") ) {
 		Twinkle.tag.mode = 'file';
-		twAddPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Add maintenance tags to file" );
+		Twinkle.addPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Add maintenance tags to file" );
 	}
 	// article/draft article tagging
-	else if( ( mw.config.get('wgNamespaceNumber') === 0 || /^Wikipedia([ _]talk)?\:Articles[ _]for[ _]creation\//.exec(mw.config.get('wgPageName')) ) && mw.config.get('wgCurRevisionId') ) {
+	else if( ( mw.config.get('wgNamespaceNumber') === 0 || mw.config.get('wgNamespaceNumber') === 118 || /^Wikipedia( talk)?\:Articles for creation\//.exec(Morebits.pageNameNorm) ) && mw.config.get('wgCurRevisionId') ) {
 		Twinkle.tag.mode = 'article';
-		twAddPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Add maintenance tags to article" );
+		Twinkle.addPortletLink( Twinkle.tag.callback, "Tag", "friendly-tag", "Add maintenance tags to article" );
 	}
 };
 
-Twinkle.tag.callback = function friendlytagCallback( uid ) {
-	var Window = new Morebits.simpleWindow( 630, (Twinkle.tag.mode === "article") ? 450 : 400 );
+Twinkle.tag.callback = function friendlytagCallback() {
+	var Window = new Morebits.simpleWindow( 630, (Twinkle.tag.mode === "article") ? 500 : 400 );
 	Window.setScriptName( "Twinkle" );
 	// anyone got a good policy/guideline/info page/instructional page link??
 	Window.addFooterLink( "Twinkle help", "WP:TW/DOC#tag" );
 
 	var form = new Morebits.quickForm( Twinkle.tag.callback.evaluate );
 
+	if (document.getElementsByClassName("patrollink").length) {
+		form.append( {
+			type: 'checkbox',
+			list: [
+				{
+					label: 'Mark the page as patrolled',
+					value: 'patrolPage',
+					name: 'patrolPage',
+					checked: Twinkle.getFriendlyPref('markTaggedPagesAsPatrolled')
+				}
+			]
+		} );
+	}
+
 	switch( Twinkle.tag.mode ) {
 		case 'article':
 			Window.setTitle( "Article maintenance tagging" );
+
+			form.append({
+				type: 'select',
+				name: 'sortorder',
+				label: 'View this list:',
+				tooltip: 'You can change the default view order in your Twinkle preferences (WP:TWPREFS).',
+				event: Twinkle.tag.updateSortOrder,
+				list: [
+					{ type: 'option', value: 'cat', label: 'By categories', selected: Twinkle.getFriendlyPref('tagArticleSortOrder') === 'cat' },
+					{ type: 'option', value: 'alpha', label: 'In alphabetical order', selected: Twinkle.getFriendlyPref('tagArticleSortOrder') === 'alpha' }
+				]
+			});
+
+			form.append({
+				type: 'div',
+				id: 'tagWorkArea',
+				className: 'morebits-scrollbox',
+				style: 'max-height: 28em'
+			});
 
 			form.append( {
 					type: 'checkbox',
@@ -54,24 +93,6 @@ Twinkle.tag.callback = function friendlytagCallback( uid ) {
 				}
 			);
 
-			form.append({
-				type: 'select',
-				name: 'sortorder',
-				label: 'View this list:',
-				tooltip: 'You can change the default view order in your Twinkle preferences (WP:TWPREFS).',
-				event: Twinkle.tag.updateSortOrder,
-				list: [
-					{ type: 'option', value: 'cat', label: 'By categories', selected: Twinkle.getFriendlyPref('tagArticleSortOrder') === 'cat' },
-					{ type: 'option', value: 'alpha', label: 'In alphabetical order', selected: Twinkle.getFriendlyPref('tagArticleSortOrder') === 'alpha' }
-				]
-			});
-
-			form.append( { type: 'div', id: 'tagWorkArea' } );
-
-			if( Twinkle.getFriendlyPref('customTagList').length ) {
-				form.append( { type: 'header', label: 'Custom tags' } );
-				form.append( { type: 'checkbox', name: 'articleTags', list: Twinkle.getFriendlyPref('customTagList') } );
-			}
 			break;
 
 		case 'file':
@@ -131,12 +152,13 @@ Twinkle.tag.checkedTags = [];
 
 Twinkle.tag.updateSortOrder = function(e) {
 	var sortorder = e.target.value;
-	var $workarea = $(e.target.form).find("div#tagWorkArea");
 
 	Twinkle.tag.checkedTags = e.target.form.getChecked("articleTags");
 	if (!Twinkle.tag.checkedTags) {
 		Twinkle.tag.checkedTags = [];
 	}
+
+	var container = new Morebits.quickForm.element({ type: "fragment" });
 
 	// function to generate a checkbox, with appropriate subgroup if needed
 	var makeCheckbox = function(tag, description) {
@@ -177,7 +199,7 @@ Twinkle.tag.updateSortOrder = function(e) {
 					name: 'expertSubject',
 					type: 'input',
 					label: 'Name of relevant WikiProject: ',
-					tooltip: 'Optionally, enter the name of a WikiProject which might be able to help recruit an expert. Don\'t include the "WikiProject" prefix.',
+					tooltip: 'Optionally, enter the name of a WikiProject which might be able to help recruit an expert. Don\'t include the "WikiProject" prefix.'
 				};
 				break;
 			case "globalize":
@@ -248,7 +270,7 @@ Twinkle.tag.updateSortOrder = function(e) {
 					checkbox.subgroup.push({
 						name: 'mergeReason',
 						type: 'textarea',
-						label: 'Rationale for merge (will be posted on ' + 
+						label: 'Rationale for merge (will be posted on ' +
 							(tag === "merge to" ? 'the other article\'s' : 'this article\'s') + ' talk page):',
 						tooltip: 'Optional, but strongly recommended. Leave blank if not wanted. Only available if a single article name is entered.'
 					});
@@ -262,24 +284,37 @@ Twinkle.tag.updateSortOrder = function(e) {
 						type: 'input',
 						label: 'Language of article (if known): ',
 						tooltip: 'Consider looking at [[WP:LRC]] for help. If listing the article at PNT, please try to avoid leaving this box blank, unless you are completely unsure.'
-					},
-					{
-						name: 'translationPostAtPNT',
+					}
+				];
+				if (tag === "not English") {
+					checkbox.subgroup.push({
+						name: 'translationNotify',
 						type: 'checkbox',
 						list: [
 							{
-								label: 'List this article at Wikipedia:Pages needing translation into English (PNT)',
-								checked: true
+								label: 'Notify article creator',
+								checked: true,
+								tooltip: "Places {{uw-notenglish}} on the creator's talk page."
 							}
 						]
-					},
-					{
-						name: 'translationComments',
-						type: 'textarea',
-						label: 'Additional comments to post at PNT',
-						tooltip: 'Optional, and only relevant if "List this article ..." above is checked.'
-					}
-				];
+					});
+				}
+				checkbox.subgroup.push({
+					name: 'translationPostAtPNT',
+					type: 'checkbox',
+					list: [
+						{
+							label: 'List this article at Wikipedia:Pages needing translation into English (PNT)',
+							checked: true
+						}
+					]
+				});
+				checkbox.subgroup.push({
+					name: 'translationComments',
+					type: 'textarea',
+					label: 'Additional comments to post at PNT',
+					tooltip: 'Optional, and only relevant if "List this article ..." above is checked.'
+				});
 				break;
 			case "notability":
 				checkbox.subgroup = {
@@ -293,6 +328,7 @@ Twinkle.tag.updateSortOrder = function(e) {
 						{ label: "{{notability|Companies}}: notability guidelines for companies and organizations", value: "Companies" },
 						{ label: "{{notability|Events}}: notability guideline for events", value: "Events" },
 						{ label: "{{notability|Films}}: notability guideline for films", value: "Films" },
+						{ label: "{{notability|Places}}: notability guideline for places", value: "Places" },
 						{ label: "{{notability|Music}}: notability guideline for music", value: "Music" },
 						{ label: "{{notability|Neologisms}}: notability guideline for neologisms", value: "Neologisms" },
 						{ label: "{{notability|Numbers}}: notability guideline for numbers", value: "Numbers" },
@@ -310,11 +346,6 @@ Twinkle.tag.updateSortOrder = function(e) {
 
 	// categorical sort order
 	if (sortorder === "cat") {
-		var div = new Morebits.quickForm.element({
-			type: "div",
-			id: "tagWorkArea"
-		});
-
 		// function to iterate through the tags and create a checkbox for each one
 		var doCategoryCheckboxes = function(subdiv, array) {
 			var checkboxes = [];
@@ -332,8 +363,8 @@ Twinkle.tag.updateSortOrder = function(e) {
 		var i = 0;
 		// go through each category and sub-category and append lists of checkboxes
 		$.each(Twinkle.tag.article.tagCategories, function(title, content) {
-			div.append({ type: "header", id: "tagHeader" + i, label: title });
-			var subdiv = div.append({ type: "div", id: "tagSubdiv" + i++ });
+			container.append({ type: "header", id: "tagHeader" + i, label: title });
+			var subdiv = container.append({ type: "div", id: "tagSubdiv" + i++ });
 			if ($.isArray(content)) {
 				doCategoryCheckboxes(subdiv, content);
 			} else {
@@ -343,12 +374,6 @@ Twinkle.tag.updateSortOrder = function(e) {
 				});
 			}
 		});
-
-		var rendered = div.render();
-		$workarea.replaceWith(rendered);
-		var $rendered = $(rendered);
-		$rendered.find("h5").css({ 'font-size': '110%', 'margin-top': '1em' });
-		$rendered.find("div").filter(":has(span.quickformDescription)").css({ 'margin-top': '0.4em' });
 	}
 	// alphabetical sort order
 	else {
@@ -356,13 +381,38 @@ Twinkle.tag.updateSortOrder = function(e) {
 		$.each(Twinkle.tag.article.tags, function(tag, description) {
 			checkboxes.push(makeCheckbox(tag, description));
 		});
-		var tags = new Morebits.quickForm.element({
+		container.append({
 			type: "checkbox",
 			name: "articleTags",
 			list: checkboxes
 		});
-		$workarea.empty().append(tags.render());
 	}
+
+	// append any custom tags
+	if (Twinkle.getFriendlyPref('customTagList').length) {
+		container.append({ type: 'header', label: 'Custom tags' });
+		container.append({ type: 'checkbox', name: 'articleTags', list: Twinkle.getFriendlyPref('customTagList') });
+	}
+
+	var $workarea = $(e.target.form).find("div#tagWorkArea");
+	var rendered = container.render();
+	$workarea.empty().append(rendered);
+
+	// style adjustments
+	$workarea.find("h5").css({ 'font-size': '110%' });
+	$workarea.find("h5:not(:first-child)").css({ 'margin-top': '1em' });
+	$workarea.find("div").filter(":has(span.quickformDescription)").css({ 'margin-top': '0.4em' });
+
+	// add a link to each template's description page
+	$.each(Morebits.quickForm.getElements(e.target.form, "articleTags"), function(index, checkbox) {
+		var $checkbox = $(checkbox);
+		var link = Morebits.htmlNode("a", ">");
+		link.setAttribute("class", "tag-template-link");
+		link.setAttribute("href", mw.util.getUrl("Template:" +
+			Morebits.string.toUpperCaseFirstChar(checkbox.values)));
+		link.setAttribute("target", "_blank");
+		$checkbox.parent().append(["\u00A0", link]);
+	});
 };
 
 
@@ -375,11 +425,10 @@ Twinkle.tag.article = {};
 
 Twinkle.tag.article.tags = {
 	"advert": "article is written like an advertisement",
-	"allplot": "article is almost entirely a plot summary",
+	"all plot": "article is almost entirely a plot summary",
 	"autobiography": "article is an autobiography and may not be written neutrally",
 	"BLP sources": "BLP article needs additional sources for verification",
 	"BLP unsourced": "BLP article has no sources at all (use BLP PROD instead for new articles)",
-	"cat improve": "article may require additional categories",
 	"citation style": "article has unclear or inconsistent inline citations",
 	"cleanup": "article may require cleanup",
 	"cleanup-reorganize": "article may be in need of reorganization to comply with Wikipedia's layout guidelines",
@@ -392,8 +441,8 @@ Twinkle.tag.article.tags = {
 	"copypaste": "article appears to have been copied and pasted from a source",
 	"dead end": "article has no links to other articles",
 	"disputed": "article has questionable factual accuracy",
-	"essay-like": "article is written like an essay and needs cleanup",
-	"expand language": "article can be expanded with material from a foreign-language Wikipedia",	
+	"essay-like": "article is written like a personal reflection or opinion essay",
+	"expand language": "article can be expanded with material from a foreign-language Wikipedia",
 	"expert-subject": "article needs attention from an expert on the subject",
 	"external links": "article's external links may not follow content policies or guidelines",
 	"fansite": "article resembles a fansite",
@@ -401,20 +450,23 @@ Twinkle.tag.article.tags = {
 	"globalize": "article may not represent a worldwide view of the subject",
 	"GOCEinuse": "article is currently undergoing a major copy edit by the Guild of Copy Editors",
 	"hoax": "article may be a complete hoax",
+	"improve categories": "article may require additional categories",
+	"incomprehensible": "article is very hard to understand or incomprehensible",
 	"in-universe": "article subject is fictional and needs rewriting from a non-fictional perspective",
-	"incoherent": "article is incoherent or very hard to understand",
 	"in use": "article is undergoing a major edit for a short while",
 	"lead missing": "article has no lead section and one should be written",
 	"lead rewrite": "article lead section needs to be rewritten to comply with guidelines",
 	"lead too long": "article lead section is too long and should be shortened",
 	"lead too short": "article lead section is too short and should be expanded",
 	"linkrot": "article uses bare URLs for references, which are prone to link rot",
+	"manual": "article is written like a manual or guidebook",
 	"merge": "article should be merged with another given article",
 	"merge from": "another given article should be merged into this one",
 	"merge to": "article should be merged into another given article",
 	"metricate": "article exclusively uses non-SI units of measurement",
 	"more footnotes": "article has some references, but insufficient in-text citations",
 	"new unreviewed article": "mark article for later review",
+	"news release": "article reads like a news release",
 	"no footnotes": "article has references, but no in-text citations",
 	"non-free": "article may contain excessive or improper use of copyrighted materials",
 	"notability": "article's subject may not meet the notability guideline",
@@ -422,7 +474,6 @@ Twinkle.tag.article.tags = {
 	"one source": "article relies largely or entirely upon a single source",
 	"original research": "article has original research or unverified claims",
 	"orphan": "article is linked to from no other articles",
-	"out of date": "article needs out-of-date information removed or updated",
 	"overcoverage": "article has an extensive bias or disproportional coverage towards one or more specific regions",
 	"overlinked": "article may have too many duplicate and/or irrelevant links",
 	"overly detailed": "article contains an excessive amount of intricate detail",
@@ -432,7 +483,7 @@ Twinkle.tag.article.tags = {
 	"primary sources": "article relies too heavily on primary sources, and needs secondary sources",
 	"prose": "article is in a list format that may be better presented using prose",
 	"recentism": "article is slanted towards recent events",
-	"ref improve": "article needs additional references or sources for verification",
+	"refimprove": "article needs additional references or sources for verification",
 	"rough translation": "article is poorly translated and needs cleanup",
 	"sections": "article needs to be broken into sections",
 	"self-published": "article may contain improper references to self-published sources",
@@ -445,6 +496,7 @@ Twinkle.tag.article.tags = {
 	"under construction": "article is currently in the middle of an expansion or major revamping",
 	"underlinked": "article may require additional wikilinks",
 	"undue": "article lends undue weight to certain aspects of the subject but not others",
+	"unfocused": "article lacks focus or is about more than one topic",
 	"unreferenced": "article has no references at all",
 	"unreliable sources": "article's references may not be reliable sources",
 	"update": "article needs additional up-to-date information added",
@@ -479,7 +531,7 @@ Twinkle.tag.article.tagCategories = {
 			"very long"
 		],
 		"Fiction-related cleanup": [
-			"allplot",
+			"all plot",
 			"fiction",
 			"in-universe",
 			"plot"
@@ -493,6 +545,8 @@ Twinkle.tag.article.tagCategories = {
 			"advert",
 			"essay-like",
 			"fansite",
+			"manual",
+			"news release",
 			"prose",
 			"technical",
 			"tense",
@@ -500,7 +554,8 @@ Twinkle.tag.article.tagCategories = {
 		],
 		"Sense (or lack thereof)": [
 			"confusing",
-			"incoherent"
+			"incomprehensible",
+			"unfocused"
 		],
 		"Information and detail": [
 			"context",
@@ -510,7 +565,6 @@ Twinkle.tag.article.tagCategories = {
 			"undue"
 		],
 		"Timeliness": [
-			"out of date",
 			"update"
 		],
 		"Neutrality, bias, and factual accuracy": [
@@ -532,7 +586,7 @@ Twinkle.tag.article.tagCategories = {
 			"one source",
 			"original research",
 			"primary sources",
-			"ref improve",
+			"refimprove",
 			"self-published",
 			"third-party",
 			"unreferenced",
@@ -541,8 +595,8 @@ Twinkle.tag.article.tagCategories = {
 	},
 	"Specific content issues": {
 		"Language": [
-			"not English",  // has a subgroup with text input
-			"rough translation",  // has a subgroup with text input
+			"not English",  // has a subgroup with several options
+			"rough translation",  // has a subgroup with several options
 			"expand language"
 		],
 		"Links": [
@@ -558,7 +612,7 @@ Twinkle.tag.article.tagCategories = {
 			"no footnotes"
 		],
 		"Categories": [
-			"cat improve",
+			"improve categories",
 			"uncategorized"
 		]
 	},
@@ -579,40 +633,44 @@ Twinkle.tag.article.tagCategories = {
 
 Twinkle.tag.spellingList = [
 	{
-		label: '{{R from abbreviation}}: redirect from a title with an abbreviation',
-		value: 'R from abbreviation' 
+		label: '{{R from initialism}}: redirect from an initialism (e.g. AGF) to its expanded form',
+		value: 'R from initialism'
+	},
+	{
+		label: '{{R from acronym}}: redirect from an acronym (e.g. POTUS) to its expanded form',
+		value: 'R from acronym'
 	},
 	{
 		label: '{{R to list entry}}: redirect to a \"list of minor entities\"-type article which contains brief descriptions of subjects not notable enough to have separate articles',
-		value: 'R to list entry' 
+		value: 'R to list entry'
 	},
 	{
 		label: '{{R to section}}: similar to {{R to list entry}}, but when list is organized in sections, such as list of characters in a fictional universe.',
-		value: 'R to section' 
+		value: 'R to section'
 	},
 	{
 		label: '{{R from misspelling}}: redirect from a misspelling or typographical error',
-		value: 'R from misspelling' 
+		value: 'R from misspelling'
 	},
 	{
 		label: '{{R from alternative spelling}}: redirect from a title with a different spelling',
-		value: 'R from alternative spelling' 
+		value: 'R from alternative spelling'
 	},
 	{
 		label: '{{R from plural}}: redirect from a plural word to the singular equivalent',
-		value: 'R from plural' 
+		value: 'R from plural'
 	},
 	{
 		label: '{{R from related word}}: redirect from a related word',
-		value: 'R from related word' 
+		value: 'R from related word'
 	},
 	{
 		label: '{{R with possibilities}}: redirect from a more specific title to a more general, less detailed article, hence something which can and should be expanded',
-		value: 'R with possibilities' 
+		value: 'R with possibilities'
 	},
 	{
 		label: '{{R from member}}: redirect from a member of a group to a related topic such as the group, organization, or team that he or she belongs to',
-		value: 'R from member' 
+		value: 'R from member'
 	},
 	{
 		label: '{{R from other capitalisation}}: redirect from a title with another method of capitalisation',
@@ -623,74 +681,78 @@ Twinkle.tag.spellingList = [
 Twinkle.tag.alternativeList = [
 	{
 		label: '{{R from alternative name}}: redirect from a title that is another name, a pseudonym, a nickname, or a synonym',
-		value: 'R from alternative name' 
+		value: 'R from alternative name'
 	},
 	{
-		label: '{{R from full name}}: redirect from a title that is a complete or more complete name',
-		value: 'R from full name' 
+		label: '{{R from long name}}: redirect from a title that is a complete or more complete name',
+		value: 'R from long name'
 	},
 	{
 		label: '{{R from surname}}: redirect from a title that is a surname',
-		value: 'R from surname' 
+		value: 'R from surname'
 	},
 	{
 		label: '{{R from historic name}}: redirect from another name with a significant historic past as a region, state, city or such, but which is no longer known by that title or name',
-		value: 'R from historic name' 
+		value: 'R from historic name'
+	},
+	{
+		label: '{{R from phrase}}: redirect from a phrase to a more general relevant article covering the topic',
+		value: 'R from phrase'
 	},
 	{
 		label: '{{R from scientific name}}: redirect from the scientific name to the common name',
-		value: 'R from scientific name' 
+		value: 'R from scientific name'
 	},
 	{
 		label: '{{R to scientific name}}: redirect from the common name to the scientific name',
-		value: 'R to scientific name' 
+		value: 'R to scientific name'
 	},
 	{
 		label: '{{R from name and country}}: redirect from the specific name to the briefer name',
-		value: 'R from name and country' 
+		value: 'R from name and country'
 	},
 	{
 		label: '{{R from alternative language}}: redirect from an English name to a name in another language, or vice-versa',
-		value: 'R from alternative language' 
+		value: 'R from alternative language'
 	},
 	{
 		label: '{{R from ASCII}}: redirect from a title in basic ASCII to the formal article title, with differences that are not diacritical marks (accents, umlauts, etc.)',
-		value: 'R from ASCII' 
+		value: 'R from ASCII'
 	},
 	{
-		label: '{{R from title without diacritics}}: redirect to the article title with diacritical marks (accents, umlauts, etc.)',
-		value: 'R from title without diacritics'
+		label: '{{R to diacritics}}: redirect to the article title with diacritical marks (accents, umlauts, etc.)',
+		value: 'R to diacritics'
 	}
 ];
 
 Twinkle.tag.administrativeList = [
 	{
 		label: '{{R from merge}}: redirect from a merged page in order to preserve its edit history',
-		value: 'R from merge' 
+		value: 'R from merge'
 	},
 	{
 		label: '{{R to disambiguation page}}: redirect to a disambiguation page',
-		value: 'R to disambiguation page' 
+		value: 'R to disambiguation page'
 	},
 	{
 		label: '{{R from duplicated article}}: redirect to a similar article in order to preserve its edit history',
-		value: 'R from duplicated article' 
+		value: 'R from duplicated article'
 	},
 	{
 		label: '{{R to decade}}: redirect from a year to the decade article',
-		value: 'R to decade' 
+		value: 'R to decade'
 	},
 	{
 		label: '{{R from shortcut}}: redirect from a Wikipedia shortcut',
-		value: 'R from shortcut' 
+		value: 'R from shortcut'
 	},
 	{
 		label: '{{R from CamelCase}}: redirect from a CamelCase title',
-		value: 'R from CamelCase' 
+		value: 'R from CamelCase'
 	},
 	{
 		label: '{{R from EXIF}}: redirect of a wikilink created from JPEG EXIF information (i.e. the \"metadata\" section on some image description pages)',
-		value: 'R from EXIF' 
+		value: 'R from EXIF'
 	},
 	{
 		label: '{{R from school}}: redirect from a school article that had very little information',
@@ -705,7 +767,6 @@ Twinkle.tag.file = {};
 Twinkle.tag.file.licenseList = [
 	{ label: '{{Bsr}}: source info consists of bare image URL/generic base URL only', value: 'Bsr' },
 	{ label: '{{Non-free reduce}}: non-low-resolution fair use image (or too-long audio clip, etc)', value: 'Non-free reduce' },
-	{ label: '{{Non-free reduced}}: fair use media which has been reduced (old versions need to be deleted)', value: 'Non-free reduced' },
 	{ label: '{{Orphaned non-free revisions}}: fair use media with old revisions that need to be deleted', value: 'subst:orfurrev' }
 ];
 
@@ -774,16 +835,16 @@ Twinkle.tag.file.replacementList = [
 	{ label: '{{Duplicate}}: exact duplicate of another file, but not yet orphaned', value: 'Duplicate' },
 	{ label: '{{Obsolete}}: improved version available', value: 'Obsolete' },
 	{ label: '{{PNG version available}}', value: 'PNG version available' },
-	{ label: '{{SVG version available}}', value: 'SVG version available' }
+	{ label: '{{Vector version available}}', value: 'Vector version available' }
 ];
 
 
 // Contains those article tags that *do not* work inside {{multiple issues}}.
 Twinkle.tag.multipleIssuesExceptions = [
-	'cat improve',
 	'copypaste',
 	'expand language',
 	'GOCEinuse',
+	'improve categories',
 	'in use',
 	'merge',
 	'merge from',
@@ -803,11 +864,11 @@ Twinkle.tag.callbacks = {
 		    tags = [], groupableTags = [], i, totalTags;
 
 		// Remove tags that become superfluous with this action
-		var pageText = pageobj.getPageText().replace(/\{\{\s*(New unreviewed article|Userspace draft)\s*(\|(?:\{\{[^{}]*\}\}|[^{}])*)?\}\}\s*/ig, "");
+		var pageText = pageobj.getPageText().replace(/\{\{\s*([Nn]ew unreviewed article|[Uu]nreviewed|[Uu]serspace draft)\s*(\|(?:\{\{[^{}]*\}\}|[^{}])*)?\}\}\s*/g, "");
 
 		var addTag = function friendlytagAddTag( tagIndex, tagName ) {
 			var currentTag = "";
-			if( tagName === 'uncategorized' || tagName === 'cat improve' ) {
+			if( tagName === 'uncategorized' || tagName === 'improve categories' ) {
 				pageText += '\n\n{{' + tagName +
 					'|date={{subst:CURRENTMONTHNAME}} {{subst:CURRENTYEAR}}}}';
 			} else {
@@ -856,11 +917,14 @@ Twinkle.tag.callbacks = {
 						} else {
 							currentTag += '|otherarticle=' + otherart;
 						}
-						break;						
+						break;
 					case 'expert-subject':
 						if (params.tagParameters.expertSubject) {
 							currentTag += '|1=' + params.tagParameters.expertSubject;
 						}
+						break;
+					case 'news release':
+						currentTag += '|1=article';
 						break;
 					case 'not English':
 					case 'rough translation':
@@ -886,7 +950,7 @@ Twinkle.tag.callbacks = {
 									// discussArticle is the article whose talk page will contain the discussion
 									params.discussArticle = (tagName === "merge to" ? params.mergeTarget : mw.config.get('wgTitle'));
 									// nonDiscussArticle is the article which won't have the discussion
-									params.nonDiscussArticle = (tagName === "merge to" ? mw.config.get('wgTitle') : params.mergeTarget)
+									params.nonDiscussArticle = (tagName === "merge to" ? mw.config.get('wgTitle') : params.mergeTarget);
 									params.talkDiscussionTitle = 'Proposed merge with ' + params.nonDiscussArticle;
 								}
 								currentTag += '|discuss=Talk:' + params.discussArticle + '#' + params.talkDiscussionTitle;
@@ -932,7 +996,7 @@ Twinkle.tag.callbacks = {
 					Morebits.status.warn( 'Info', 'Found {{' + params.tags[i] +
 						'}} on the article already...excluding' );
 					// don't do anything else with merge tags
-					if (params.tags[i] === "merge" || params.tags[i] === "merge from" || 
+					if (params.tags[i] === "merge" || params.tags[i] === "merge from" ||
 						params.tags[i] === "merge to") {
 						params.mergeTarget = params.mergeReason = params.mergeTagOther = false;
 					}
@@ -1035,7 +1099,7 @@ Twinkle.tag.callbacks = {
 				var talkpage = new Morebits.wiki.page("Talk:" + params.discussArticle, "Posting rationale on talk page");
 				talkpage.setAppendText(talkpageText);
 				talkpage.setEditSummary('Proposing to merge [[' + params.nonDiscussArticle + ']] ' +
-					(tags.indexOf("merge") !== -1 ? 'with' : 'into') + ' [[' + params.discussArticle + ']]' + 
+					(tags.indexOf("merge") !== -1 ? 'with' : 'into') + ' [[' + params.discussArticle + ']]' +
 					Twinkle.getPref('summaryAd'));
 				talkpage.setWatchlist(Twinkle.getFriendlyPref('watchMergeDiscussions'));
 				talkpage.setCreateOption('recreate');
@@ -1049,9 +1113,9 @@ Twinkle.tag.callbacks = {
 				} else if (tags.indexOf("merge to") !== -1) {
 					otherTagName = "merge from";
 				}
-				var newParams = { 
+				var newParams = {
 					tags: [otherTagName],
-					mergeTarget: mw.config.get("wgPageName"),
+					mergeTarget: Morebits.pageNameNorm,
 					discussArticle: params.discussArticle,
 					talkDiscussionTitle: params.talkDiscussionTitle
 				};
@@ -1073,9 +1137,32 @@ Twinkle.tag.callbacks = {
 				});
 				pntPage.load(Twinkle.tag.callbacks.translationListPage);
 			}
+			if (params.translationNotify) {
+				pageobj.lookupCreator(function(innerPageobj) {
+					var initialContrib = innerPageobj.getCreator();
+
+					// Disallow warning yourself
+					if (initialContrib === mw.config.get('wgUserName')) {
+						innerPageobj.getStatusElement().warn("You (" + initialContrib + ") created this page; skipping user notification");
+						return;
+					}
+
+					var userTalkPage = new Morebits.wiki.page('User talk:' + initialContrib,
+						'Notifying initial contributor (' + initialContrib + ')');
+					var notifytext = "\n\n== Your article [[" + Morebits.pageNameNorm + "]]==\n" +
+						"{{subst:uw-notenglish|1=" + Morebits.pageNameNorm +
+						(params.translationPostAtPNT ? "" : "|nopnt=yes") + "}} ~~~~";
+					userTalkPage.setAppendText(notifytext);
+					userTalkPage.setEditSummary("Notice: Please use English when contributing to the English Wikipedia." +
+						Twinkle.getPref('summaryAd'));
+					userTalkPage.setCreateOption('recreate');
+					userTalkPage.setFollowRedirect(true);
+					userTalkPage.append();
+				});
+			}
 		});
 
-		if( Twinkle.getFriendlyPref('markTaggedPagesAsPatrolled') ) {
+		if( params.patrol ) {
 			pageobj.patrol();
 		}
 	},
@@ -1085,7 +1172,7 @@ Twinkle.tag.callbacks = {
 		var params = pageobj.getCallbackParameters();
 		var statelem = pageobj.getStatusElement();
 
-		var templateText = "{{subst:" + params.template + "|pg=" + mw.config.get("wgPageName") + "|Language=" + 
+		var templateText = "{{subst:" + params.template + "|pg=" + Morebits.pageNameNorm + "|Language=" +
 			(params.lang || "uncertain") + "|Comments=" + params.reason.trim() + "}} ~~~~";
 
 		var text, summary;
@@ -1093,7 +1180,7 @@ Twinkle.tag.callbacks = {
 			text = old_text + "\n\n" + templateText;
 			summary = "Translation cleanup requested on ";
 		} else {
-			text = old_text.replace(/\n+(==\s?Translated pages that could still use some cleanup\s?==)/, 
+			text = old_text.replace(/\n+(==\s?Translated pages that could still use some cleanup\s?==)/,
 				"\n\n" + templateText + "\n\n$1");
 			summary = "Translation" + (params.lang ? (" from " + params.lang) : "") + " requested on ";
 		}
@@ -1103,7 +1190,7 @@ Twinkle.tag.callbacks = {
 			return;
 		}
 		pageobj.setPageText(text);
-		pageobj.setEditSummary(summary + " [[" + mw.config.get("wgPageName") + "]]" + Twinkle.getPref('summaryAd'));
+		pageobj.setEditSummary(summary + " [[" + Morebits.pageNameNorm + "]]" + Twinkle.getPref('summaryAd'));
 		pageobj.setCreateOption('recreate');
 		pageobj.save();
 	},
@@ -1123,7 +1210,7 @@ Twinkle.tag.callbacks = {
 					"Now Commons"].indexOf(tag) !== -1) {
 					text = text.replace(/\{\{(mtc|(copy |move )?to ?commons|move to wikimedia commons|copy to wikimedia commons)[^}]*\}\}/gi, "");
 				}
-				if (tag === "SVG version available") {
+				if (tag === "Vector version available") {
 					text = text.replace(/\{\{((convert to |convertto|should be |shouldbe|to)?svg|badpng|vectorize)[^}]*\}\}/gi, "");
 				}
 
@@ -1184,7 +1271,7 @@ Twinkle.tag.callbacks = {
 						break;
 					case "PNG version available":
 						/* falls through */
-					case "SVG version available":
+					case "Vector version available":
 						/* falls through */
 					case "Obsolete":
 						/* falls through */
@@ -1204,7 +1291,7 @@ Twinkle.tag.callbacks = {
 							currentTag += "|reason=" + input;
 						}
 						break;
-					case "Non-free reduced":
+					case "subst:orfurrev":
 						//remove {{non-free reduce}} and redirects
 						text = text.replace(/\{\{\s*(Template\s*:\s*)?(Non-free reduce|FairUseReduce|Fairusereduce|Fair Use Reduce|Fair use reduce|Reduce size|Reduce|Fair-use reduce|Image-toobig|Comic-ovrsize-img|Non-free-reduce|Nfr|Smaller image|Nonfree reduce)\s*(\|(?:\{\{[^{}]*\}\}|[^{}])*)?\}\}\s*/ig, "");
 						currentTag += "|date={{subst:date}}";
@@ -1243,17 +1330,18 @@ Twinkle.tag.callbacks = {
 		pageobj.setCreateOption('nocreate');
 		pageobj.save();
 
-		if( Twinkle.getFriendlyPref('markTaggedPagesAsPatrolled') ) {
+		if( params.patrol ) {
 			pageobj.patrol();
 		}
 	}
 };
 
 Twinkle.tag.callback.evaluate = function friendlytagCallbackEvaluate(e) {
-	mw.config.set('wgPageName', mw.config.get('wgPageName').replace(/_/g, ' '));  // for queen/king/whatever and country!
-
 	var form = e.target;
 	var params = {};
+	if (form.patrolPage) {
+		params.patrol = form.patrolPage.checked;
+	}
 
 	switch (Twinkle.tag.mode) {
 		case 'article':
@@ -1273,6 +1361,7 @@ Twinkle.tag.callback.evaluate = function friendlytagCallbackEvaluate(e) {
 			params.mergeTagOther = form["articleTags.mergeTagOther"] ? form["articleTags.mergeTagOther"].checked : false;
 			// common to {{not English}}, {{rough translation}}
 			params.translationLanguage = form["articleTags.translationLanguage"] ? form["articleTags.translationLanguage"].value : null;
+			params.translationNotify = form["articleTags.translationNotify"] ? form["articleTags.translationNotify"].checked : null;
 			params.translationPostAtPNT = form["articleTags.translationPostAtPNT"] ? form["articleTags.translationPostAtPNT"].checked : null;
 			params.translationComments = form["articleTags.translationComments"] ? form["articleTags.translationComments"].value : null;
 			break;
@@ -1314,13 +1403,13 @@ Twinkle.tag.callback.evaluate = function friendlytagCallbackEvaluate(e) {
 	Morebits.simpleWindow.setButtonsEnabled( false );
 	Morebits.status.init( form );
 
-	Morebits.wiki.actionCompleted.redirect = mw.config.get('wgPageName');
+	Morebits.wiki.actionCompleted.redirect = Morebits.pageNameNorm;
 	Morebits.wiki.actionCompleted.notice = "Tagging complete, reloading article in a few seconds";
 	if (Twinkle.tag.mode === 'redirect') {
 		Morebits.wiki.actionCompleted.followRedirect = false;
 	}
 
-	var wikipedia_page = new Morebits.wiki.page(mw.config.get('wgPageName'), "Tagging " + Twinkle.tag.mode);
+	var wikipedia_page = new Morebits.wiki.page(Morebits.pageNameNorm, "Tagging " + Twinkle.tag.mode);
 	wikipedia_page.setCallbackParameters(params);
 	switch (Twinkle.tag.mode) {
 		case 'article':
@@ -1336,3 +1425,7 @@ Twinkle.tag.callback.evaluate = function friendlytagCallbackEvaluate(e) {
 			break;
 	}
 };
+})(jQuery);
+
+
+//</nowiki>
